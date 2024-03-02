@@ -1,82 +1,73 @@
 // create web server
-var express = require('express');
-// create express application
-var app = express();
-// create web server
-var server = require('http').createServer(app);
-// create socket.io server
-var io = require('socket.io')(server);
-// create comments array
-var comments = [];
-// create comments array
-var users = [];
-// create array of colors
-var colors = ['red', 'green', 'blue', 'magenta', 'purple', 'plum', 'orange'];
-// create express application
-app.use(express.static('public'));
-// create web server
-server.listen(3000, function() {
-  console.log('Server is listening on port 3000');
-});
-// create web server
-app.get('/', function(req, res) {
-  res.sendFile(__dirname + '/index.html');
-});
-// create socket.io server
-io.on('connection', function(client) {
-  console.log('Client connected...');
-  // create on message event
-  client.on('message', function(data) {
-    var nickname;
-    // create on join event
-    if (data.type == 'join') {
-      nickname = data.message;
-      users.push(nickname);
-      client.nickname = nickname;
-      var color = colors.shift();
-      client.color = color;
-      colors.push(color);
-      client.emit('message', {
-        type: 'color',
-        message: color
-      });
-      client.broadcast.emit('message', {
-        type: 'join',
-        message: nickname
-      });
-      client.emit('message', {
-        type: 'message',
-        message: 'Welcome, ' + nickname + '!'
-      });
+// create a web server with the http module
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const url = require('url');
+const queryString = require('querystring');
+const comments = require('./comments');
+const { get } = require('http');
+const { parse } = require('path');
+
+// create a web server
+http.createServer((req, res) => {
+    // get the url
+    const urlObj = url.parse(req.url, true);
+    const pathname = urlObj.pathname;
+    // get the query string
+    const query = urlObj.query;
+
+    // get the method
+    const method = req.method;
+
+    // set the response header
+    res.setHeader('Content-Type', 'text/html;charset=utf-8');
+
+    // set the response
+    if (pathname === '/' || pathname === '/index.html') {
+        // read the file
+        fs.readFile(path.join(__dirname, 'index.html'), 'utf-8', (err, data) => {
+            if (err) {
+                return res.end('404 Not Found');
+            }
+            // read the comments
+            comments.get().then((data) => {
+                res.end(data);
+            });
+        });
+    } else if (pathname === '/add' && method === 'GET') {
+        // get the query string
+        const query = urlObj.query;
+        // add the comment
+        comments.add(query).then((data) => {
+            // redirect
+            res.writeHead(301, {
+                Location: '/'
+            });
+            res.end();
+        });
+    } else if (pathname === '/add' && method === 'POST') {
+        // post the data
+        let data = '';
+        // get the post data
+        req.on('data', (chunk) => {
+            data += chunk;
+        });
+        req.on('end', () => {
+            // parse the query string
+            const query = queryString.parse(data);
+            // add the comment
+            comments.add(query).then((data) => {
+                // redirect
+                res.writeHead(301, {
+                    Location: '/'
+                });
+                res.end();
+            });
+        });
+    } else {
+        res.end('404 Not Found');
     }
-    // create on comment event
-    if (data.type == 'comment') {
-      var comment = {
-        nickname: client.nickname,
-        color: client.color,
-        message: data.message
-      };
-      comments.push(comment);
-      io.emit('message', {
-        type: 'comment',
-        message: comment
-      });
-    }
-  });
-  // create on disconnect event
-  client.on('disconnect', function() {
-    console.log('Client disconnected...');
-    var index = users.indexOf(client.nickname);
-    if (index > -1) {
-      users.splice(index, 1);
-    }
-    client.broadcast.emit('message', {
-      type: 'leave',
-      message: client.nickname
-    });
-  });
+}).listen(3000, () => {
+    console.log('Server is running at http://localhost:3000');
 });
-// create on comments event
-app.get('/comments', function(req, res) {
-  res.send(comments);
-}); // Add a closing curly brace here
